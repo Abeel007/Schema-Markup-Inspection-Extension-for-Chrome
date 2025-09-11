@@ -2,7 +2,7 @@
 // Handles extension lifecycle and communication
 
 chrome.runtime.onInstalled.addListener(() => {
-  console.log('Schema Markup Inspector installed');
+  // Extension installed
 });
 
 // Handle extension icon click
@@ -13,7 +13,7 @@ chrome.action.onClicked.addListener((tab) => {
 // Handle messages from content scripts
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'logError') {
-    console.error('Content script error:', request.error);
+    // Handle content script errors silently
   }
   return true;
 });

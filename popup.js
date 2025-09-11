@@ -1,8 +1,11 @@
 // Popup script for Schema Markup Inspector
 document.addEventListener('DOMContentLoaded', function() {
   const inspectBtn = document.getElementById('inspectBtn');
+  const copyBtn = document.getElementById('copyBtn');
   const statusDiv = document.getElementById('status');
   const resultsDiv = document.getElementById('results');
+  
+  let currentSchemaData = null;
   
   function showStatus(message, type = 'info') {
     statusDiv.textContent = message;
@@ -15,15 +18,18 @@ document.addEventListener('DOMContentLoaded', function() {
   }
   
   function showResults(schemaData) {
+    currentSchemaData = schemaData;
     resultsDiv.innerHTML = '';
     
     if (!schemaData || Object.keys(schemaData).length === 0) {
       resultsDiv.innerHTML = '<div class="no-schema">No schema markup found on this page</div>';
+      copyBtn.style.display = 'none';
     } else {
       Object.keys(schemaData).forEach(schemaType => {
         const section = createSchemaSection(schemaType, schemaData[schemaType]);
         resultsDiv.appendChild(section);
       });
+      copyBtn.style.display = 'block';
     }
     
     resultsDiv.style.display = 'block';
@@ -66,11 +72,56 @@ document.addEventListener('DOMContentLoaded', function() {
             value.className += ' url';
             value.textContent = fieldInfo.value;
           } else if (fieldInfo.isArray) {
-            value.innerHTML = fieldInfo.value.map(item => 
-              `<div class="array-item">${item}</div>`
-            ).join('');
+            value.innerHTML = fieldInfo.value.map((item, index) => {
+              let itemContent;
+              if (typeof item === 'object' && item !== null) {
+                // Handle specific object types
+                if (item.question && item.answer) {
+                  itemContent = `Q: ${item.question}\nA: ${item.answer}`;
+                } else if (item.name && item.url && item.position) {
+                  itemContent = `${item.position}. ${item.name} (${item.url})`;
+                } else if (item.name && item.url) {
+                  itemContent = `${item.name} (${item.url})`;
+                } else if (item.text) {
+                  itemContent = item.text;
+                } else if (item.stepNumber && item.name) {
+                  itemContent = `Step ${item.stepNumber}: ${item.name}`;
+                } else {
+                  itemContent = JSON.stringify(item, null, 2);
+                }
+              } else {
+                itemContent = item;
+              }
+              return `<div class="array-item">${itemContent}</div>`;
+            }).join('');
           } else {
-            value.textContent = fieldInfo.value;
+            // Handle long text with truncation
+            const textValue = String(fieldInfo.value);
+            if (textValue.length > 200) {
+              const truncated = textValue.substring(0, 200) + '...';
+              value.innerHTML = `<span class="truncated-text">${truncated}</span><button class="expand-btn">Show more</button><button class="collapse-btn" style="display:none;">Show less</button>`;
+              
+              // Add event listeners for expand/collapse buttons
+              const expandBtn = value.querySelector('.expand-btn');
+              const collapseBtn = value.querySelector('.collapse-btn');
+              const truncatedSpan = value.querySelector('.truncated-text');
+              
+              expandBtn.addEventListener('click', function() {
+                truncatedSpan.textContent = textValue;
+                truncatedSpan.classList.add('expanded');
+                expandBtn.style.display = 'none';
+                collapseBtn.style.display = 'inline';
+              });
+              
+              collapseBtn.addEventListener('click', function() {
+                truncatedSpan.textContent = truncated;
+                truncatedSpan.classList.remove('expanded');
+                collapseBtn.style.display = 'none';
+                expandBtn.style.display = 'inline';
+              });
+            } else {
+              value.textContent = fieldInfo.value;
+            }
           }
           
           field.appendChild(label);
@@ -115,9 +166,24 @@ document.addEventListener('DOMContentLoaded', function() {
         groupName = 'Reviews & Ratings';
       }
       
+      let displayValue;
+      if (isArray) {
+        displayValue = value;
+      } else if (typeof value === 'object' && value !== null) {
+        // Handle different object types more gracefully
+        if (value.text || value.name || value.url) {
+          // For simple objects with common properties, show the most relevant field
+          displayValue = value.text || value.name || value.url || JSON.stringify(value, null, 2);
+        } else {
+          displayValue = JSON.stringify(value, null, 2);
+        }
+      } else {
+        displayValue = value;
+      }
+      
       groups[groupName].push({
         key: key,
-        value: isArray ? value : (typeof value === 'object' ? JSON.stringify(value, null, 2) : value),
+        value: displayValue,
         isUrl: isUrl,
         isArray: isArray
       });
@@ -145,6 +211,11 @@ document.addEventListener('DOMContentLoaded', function() {
     return icons[type] || '📄';
   }
   
+  // Add event listener for copy button
+  copyBtn.addEventListener('click', function() {
+    copyToClipboard();
+  });
+
   inspectBtn.addEventListener('click', async function() {
     inspectBtn.disabled = true;
     showStatus('Analyzing page for schema markup...', 'info');
@@ -176,7 +247,7 @@ document.addEventListener('DOMContentLoaded', function() {
           // Wait a moment for the script to initialize
           await new Promise(resolve => setTimeout(resolve, 100));
         } catch (injectError) {
-          console.log('Content script injection failed:', injectError.message);
+          // Content script injection failed
         }
       }
       
@@ -194,7 +265,6 @@ document.addEventListener('DOMContentLoaded', function() {
         showResults({});
       }
     } catch (error) {
-      console.error('Error:', error);
       
       if (error.message === 'Timeout') {
         showStatus('Content script not responding. Please refresh the page and try again.', 'error');
@@ -212,5 +282,62 @@ document.addEventListener('DOMContentLoaded', function() {
   
   function hideResults() {
     resultsDiv.style.display = 'none';
+    copyBtn.style.display = 'none';
   }
+  
+  function copyToClipboard() {
+    if (!currentSchemaData) return;
+    
+    let copyText = '';
+    Object.keys(currentSchemaData).forEach(schemaType => {
+      copyText += `${getSchemaIcon(schemaType)} ${schemaType}\n`;
+      copyText += 'Core Information\n';
+      
+      const data = currentSchemaData[schemaType];
+      Object.keys(data).forEach(key => {
+        const value = data[key];
+        let displayValue;
+        
+        if (Array.isArray(value)) {
+          displayValue = value.map((item, index) => {
+            if (typeof item === 'object' && item !== null) {
+              if (item.question && item.answer) {
+                return `${index + 1}. Q: ${item.question}\n   A: ${item.answer}`;
+              } else if (item.name && item.url && item.position) {
+                return `${index + 1}. ${item.position}. ${item.name} (${item.url})`;
+              } else if (item.name && item.url) {
+                return `${index + 1}. ${item.name} (${item.url})`;
+              } else if (item.text) {
+                return `${index + 1}. ${item.text}`;
+              } else if (item.stepNumber && item.name) {
+                return `${index + 1}. Step ${item.stepNumber}: ${item.name}`;
+              } else {
+                return `${index + 1}. ${JSON.stringify(item)}`;
+              }
+            } else {
+              return `${index + 1}. ${item}`;
+            }
+          }).join('\n');
+        } else if (typeof value === 'object' && value !== null) {
+          if (value.text || value.name || value.url) {
+            displayValue = value.text || value.name || value.url;
+          } else {
+            displayValue = JSON.stringify(value, null, 2);
+          }
+        } else {
+          displayValue = value;
+        }
+        
+        copyText += `${key}: ${displayValue}\n`;
+      });
+      copyText += '\n';
+    });
+    
+    navigator.clipboard.writeText(copyText).then(() => {
+      showStatus('Results copied to clipboard!', 'success');
+      setTimeout(hideStatus, 2000);
+    }).catch(err => {
+      showStatus('Failed to copy to clipboard', 'error');
+    });
+  };
 });

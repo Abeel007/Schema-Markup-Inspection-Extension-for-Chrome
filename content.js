@@ -14,7 +14,6 @@ class SchemaInspector {
   // Initialize the inspector
   init() {
     this.isReady = true;
-    console.log('Schema Inspector initialized');
   }
   
   // Main inspection method
@@ -53,7 +52,7 @@ class SchemaInspector {
           }
         });
       } catch (error) {
-        console.warn('Error parsing JSON-LD:', error);
+        // Skip invalid JSON-LD
       }
     });
   }
@@ -503,7 +502,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       const schemaData = schemaInspector.inspectSchema();
       sendResponse({ success: true, data: schemaData });
     } catch (error) {
-      console.error('Schema inspection error:', error);
       sendResponse({ success: false, error: error.message });
     }
   }
